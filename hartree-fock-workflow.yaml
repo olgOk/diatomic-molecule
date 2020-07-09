@@ -1,0 +1,84 @@
+# Workflow API version
+ZapOSApiVersion: v1alpha1
+
+# Declares this as workflow
+kind: Workflow
+
+# List resources needed by workflow.
+resources:
+
+- name: diatomic-molecule
+  type: git
+  parameters:
+    url: "git@github.com:olgOk/diatomic-molecule.git"
+    branch: "master"
+- name: z-quantum-core
+  type: git
+  parameters:
+    url: "git@github.com:zapatacomputing/z-quantum-core.git"
+    branch: "master"
+- name: qe-openfermion
+  type: git
+  parameters:
+    url: "git@github.com:zapatacomputing/qe-openfermion.git"
+    branch: "master"
+- name: qe-psi4
+  type: git
+  parameters:
+    url: "git@github.com:zapatacomputing/qe-psi4.git"
+    branch: "master"
+
+# Data to help you easily work with your workflow
+metadata:
+
+  # Prefix for workflow ID
+  generateName: hartree-fock-
+
+# Data for running the workflow
+spec:
+
+  # Think of this as identifying the `main` function -- this tells the workflow which template to start with
+  entrypoint: run-h2
+
+  # Initializing global variables for use in workflow
+  arguments:
+    parameters:
+
+    # Where output data is stored -- Must be `quantum-engine` for compatibility with Orquestra data services
+    - s3-bucket: quantum-engine
+    # Path where output data is stored within the `s3-bucket` -- can be anything you want
+    - s3-key: tutorials/hartree-fock/
+
+  # The steps of the workflow
+  templates:
+  - name: run-h2
+    steps:
+
+    # Create the molecular geometry
+    - - name: create-molecule
+        template: create-diatomic-molecule
+        arguments:
+          parameters:
+          - species1: H
+          - species2: H
+          - bond-length: '0.7'
+          - resources: [diatomic-molecule]
+          - docker-image: z-quantum-default
+          - docker-tag: latest
+
+    # Perform a Hartree-Fock calculation using Psi4
+    - - name: run-psi4
+        template: run-psi4
+        arguments:
+          artifacts:
+          - geometry:
+              from: '{{steps.create-molecule.outputs.artifacts.geometry}}'
+          parameters:
+          - basis: STO-3G
+          - method: scf # ccsd(t)
+          - reference: rhf
+          - nthreads: "4"
+          - save-hamiltonian: 'False' # Boolean values must be put in quotes!
+          - resources: [z-quantum-core, qe-openfermion, qe-psi4]
+          - docker-image: qe-psi4
+          - docker-tag: latest
